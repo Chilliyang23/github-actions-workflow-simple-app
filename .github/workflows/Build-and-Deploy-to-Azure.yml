@@ -3,7 +3,7 @@ name: Build and Deploy to Azure
 env:
   AZURE_CONTAINER_REGISTRY_NAME: "acr20241023zach"
   AZURE_CONTAINER_REGISTRY_URL: "acr20241023zach.azurecr.io"
-  CONTAINER_NAME: "Hello_World"
+  CONTAINER_NAME: "hello_world"
   # env parameters can be referred within this yml by adding prefix of 'env.'
 
 on:
