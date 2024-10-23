@@ -1,0 +1,63 @@
+name: Build and Deploy to Azure
+
+env:
+  AZURE_CONTAINER_REGISTRY_NAME: "acr20241023zach"
+  AZURE_CONTAINER_REGISTRY_URL: "acr20241023zach.azurecr.io"
+  CONTAINER_NAME: "Hello_World"
+  # env parameters can be referred within this yml by adding prefix of 'env.'
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+  # workflow_dispatch, manual trigger
+
+# permissions for this workflow
+permissions: 
+  contents: read
+
+jobs:
+# jobs contain different stages (different phase of workflow)
+# With stage, there are steps of processes for completing this stage
+  buildContainerImage:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1st, checkout(extract) the code
+      - name: Checkout
+        uses: actions/checkout@v4.2.1
+
+      # docker env setup, so that github-actions can build images based on the given dockerfiler in the repo
+      - name: Docker Setup Buildx
+        uses: docker/setup-buildx-action@v3.7.1
+
+      # In order to push images up onto Azure Container Registry, Azure Container registry access / login is required
+      - name: Azure Container Registry Login
+        uses: Azure/docker-login@v1
+        with:
+        # Following info can be retrieved at Azure Container Registry > Setting > Access Keys
+          # Container registry username
+          username: ${{ env.AZURE_CONTAINER_REGISTRY_NAME }}
+          # Container registry password, password manually saved in 'Repository secrets' and can be refered by adding prefix of 'secrets.'
+          password: ${{ secrets.AZURE_CONTAINER_REGISTRY_PASSWORD }}
+          # Container registry server url
+          login-server: ${{ env.AZURE_CONTAINER_REGISTRY_URL }}
+
+      # After login, then we need to build this docker image and push it into this container registry
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v6.9.0
+        with:
+          push: true
+          tags: ${{ env.AZURE_CONTAINER_REGISTRY_URL }}/${{ env.CONTAINER_NAME }} :${{ github.sha }}
+          # github.sha is the ID generated on every commit
+          file: ./Dockerfile
+          # dockerFile, for this example, dockerfile is stored in root directory
+
+  # depolyToAKS:
+  #   runs-on: ubuntu-latest
+
+  #   steps:
+  #     echo
+    
+  
+  
