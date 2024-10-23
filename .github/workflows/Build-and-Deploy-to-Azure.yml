@@ -2,8 +2,10 @@ name: Build and Deploy to Azure
 
 env:
   AZURE_CONTAINER_REGISTRY_NAME: "acr20241023zach"
-  AZURE_CONTAINER_REGISTRY_URL: "acr20241023zach.azurecr.io"
+  AZURE_CONTAINER_REGISTRY: "acr20241023zach.azurecr.io"
   CONTAINER_NAME: "hello_world"
+  RESOURCE_GROUP: "RG-github-actions-demo"
+  CLUSTER_NAME: "akc-zach-aue-23"
   # env parameters can be referred within this yml by adding prefix of 'env.'
 
 on:
@@ -41,23 +43,89 @@ jobs:
           # Container registry password, password manually saved in 'Repository secrets' and can be refered by adding prefix of 'secrets.'
           password: ${{ secrets.AZURE_CONTAINER_REGISTRY_PASSWORD }}
           # Container registry server url
-          login-server: ${{ env.AZURE_CONTAINER_REGISTRY_URL }}
+          login-server: ${{ env.AZURE_CONTAINER_REGISTRY }}
 
       # After login, then we need to build this docker image and push it into this container registry
       - name: Build and push Docker images
         uses: docker/build-push-action@v6.9.0
         with:
           push: true
-          tags: ${{ env.AZURE_CONTAINER_REGISTRY_URL }}/${{ env.CONTAINER_NAME }}:${{ github.sha }}
+          tags: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.CONTAINER_NAME }}:${{ github.sha }}
           # github.sha is the ID generated on every commit
           file: ./Dockerfile
           # dockerFile, for this example, dockerfile is stored in root directory
 
-  # depolyToAKS:
-  #   runs-on: ubuntu-latest
+  depolyToAKS:
+    runs-on: ubuntu-latest
 
-  #   steps:
-  #     echo
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+
+    # Since OIDC will be used between github actions and Azure, then the 'environment' of OIDC
+    # configured on Azure needs to be provided
+    environment: Production
+
+    # execute job of deploy phase only when job of build phase is a success, otherwise this phase will be skipped
+    needs: [buildContainerImage]
+    
+
+    steps:
+      # as usual, fetch code first
+      - name: Checkout
+        uses: actions/checkout@v4.2.1
+
+      # Credentials can be retrieved from Azure Entra ID > App registration > Registered APP > overview, and subscription ID overview
+      - name: Azure Login
+        uses: Azure/login@v2.2.0
+        with:
+          client-id: ${{ secrets.AZURE_APP_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_APP_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # next step is kubernetes deployment, hence login is first
+      - name: Setup kubelogin
+        uses: Azure/use-kubelogin@v1
+        with:
+          kubelogin-version: 'v0.0.25'
+
+      # after login, we need to retrieve info from Azure kubernetes cluster
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v3.0
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: ${{ env.CLUSTER_NAME }}
+          admin: false
+          use-kubelogin: 'true'
+
+      # substitude certain parameters within yaml file of Kubernetes, since it was created without
+      # knowing the acutal image name and so on
+      - name: envsubst-action
+        uses: danielr1996/envsubst-action@1.1.0
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          AZURE_CONTAINER_REGISTRY: ${{ env.AZURE_CONTAINER_REGISTRY }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+        with:
+          input:
+            kubernetes/hello-world-deployment.yaml
+          output:
+            hello-world-deployment.yaml
+
+      # push/deploy the files to Kubernetes cluster
+      - name: Deploy to Kubernetes cluster
+        uses: Azure/k8s-deploy@v4.9
+        with:
+          action: deploy
+          manifests: |
+            hello-world-deployment.yaml
+            kubernetes/hello-world-service.yaml
+          images: ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.CONTAINER_NAME }}:${{ github.sha }}
+          # The structure of the image name that Azure Container Registry (ACR) uses is as below:
+          # <registry-name>.azurecr.io/<repository-name>:<tag>
+        
+
     
   
   
