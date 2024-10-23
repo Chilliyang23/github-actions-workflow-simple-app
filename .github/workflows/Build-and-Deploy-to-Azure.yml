@@ -90,9 +90,10 @@ jobs:
         with:
           kubelogin-version: 'v0.0.25'
 
+
       # after login, we need to retrieve info from Azure kubernetes cluster
-      - name: Kubernetes Set Context
-        uses: Azure/k8s-set-context@v3.0
+      - name: Get K8s Context
+        uses: Azure/aks-set-context@v3
         with:
           resource-group: ${{ env.RESOURCE_GROUP }}
           cluster-name: ${{ env.CLUSTER_NAME }}
